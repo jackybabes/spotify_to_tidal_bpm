@@ -5,8 +5,8 @@ import logging
 from spotipy.oauth2 import SpotifyOAuth
 
 def main():
-    scope = "user-library-read"
-    spotify_session = spotipy.Spotify(auth_manager=SpotifyOAuth(scope=scope))
+    spotify_login_scope = "user-library-read"
+    spotify_session = spotipy.Spotify(auth_manager=SpotifyOAuth(scope=spotify_login_scope))
 
     tidal_session = tidalapi.Session()
     # # Will run until you visit the printed url and link your account
