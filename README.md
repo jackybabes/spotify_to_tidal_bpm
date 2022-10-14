@@ -6,7 +6,7 @@ Move songs from Spotify liked songs to Tidal playlists, sorted by BPM
 - Look for playlists existing and create if missing
 - Add support for larger range of BPM
 - Comments...
-- Check to see if song already in playlist
+
 
 # To Do - Long Term
 - See if there is way to match song better than 'top_tune'
@@ -15,3 +15,4 @@ Move songs from Spotify liked songs to Tidal playlists, sorted by BPM
 
 # Done
 - Get entire playlist
+- Check to see if song already in playlist
