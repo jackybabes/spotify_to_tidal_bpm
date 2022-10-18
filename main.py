@@ -18,15 +18,10 @@ def main():
     expiry_time = os.getenv('TIDAL_EXPIRY_TIME')
     tidal_session.load_oauth_session(token_type, access_token, refresh_token, expiry_time)
 
-
     tidal_playlists = tidal_session.user.playlists()
-    tidal_tempo_playlists = []
-    for playlist in tidal_playlists:
-        tidal_tempo_playlists.append({
-            'name': playlist.name,
-            'tempo': int(playlist.name),
-            'id': playlist.id
-        })
+    tidal_playlists = [playlist for playlist in tidal_playlists if 'Auto Generated Playlist' in playlist.description]
+    tidal_playlists_to_be_created = [tempo for tempo in range(70,185,5) if str(tempo) not in [playlist.name for playlist in tidal_playlists]]
+    tidal_playlists += [tidal_session.user.create_playlist(f"{tempo}", f"Auto Generated Playlist - {tempo}BPM") for tempo in tidal_playlists_to_be_created]
 
     spotify_liked_tracks = spotify_session.current_user_saved_tracks()
     while spotify_liked_tracks:
@@ -42,11 +37,10 @@ def main():
                 continue
 
             bpm_rounded = 5 * round(spotify_audio_features['tempo'] / 5)
-            if bpm_rounded <= 105 or bpm_rounded >= 160:
+            if bpm_rounded < 70 or bpm_rounded > 180:
                 logging.warning("BPM too Low/High")
                 continue
 
-            
             tidal_search_result = tidal_session.search(
                 query=f"{spotify_track['artists'][0]['name']} {spotify_track['name']}", 
                 models=[tidalapi.media.Track]
@@ -58,7 +52,7 @@ def main():
 
 
             logging.info(f"Adding to playlist: {bpm_rounded}")
-            tidal_target_playlist = tidal_session.playlist([playlist for playlist in tidal_tempo_playlists if playlist['tempo'] == bpm_rounded][0]['id'])
+            tidal_target_playlist = [playlist for playlist in tidal_playlists if int(playlist.name) == bpm_rounded][0]
             tidal_target_playlist.add([tidal_search_result['top_hit'].id])
         
         if spotify_liked_tracks['next']:
