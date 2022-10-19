@@ -15,7 +15,12 @@ def main():
     args = parser.parse_args()
     if args.url:
         spotify_session = spotipy.Spotify(auth_manager=SpotifyClientCredentials())
-        spotify_playlist = spotify_session.playlist('https://open.spotify.com/playlist/7D9kZlQGt4aQoyYICPAGHK?si=7fc7696235dc4d8c')
+        try:
+            spotify_playlist = spotify_session.playlist(args.url)
+        except Exception as e:
+            logging.error("Could not parse URL")
+            logging.error(e)
+            sys.exit(0)
     elif args.liked_songs:
         spotify_login_scope = "user-library-read"
         spotify_session = spotipy.Spotify(auth_manager=SpotifyOAuth(scope=spotify_login_scope))
