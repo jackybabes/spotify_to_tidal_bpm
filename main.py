@@ -7,6 +7,22 @@ import argparse
 from spotipy.oauth2 import SpotifyOAuth
 from spotipy.oauth2 import SpotifyClientCredentials
 
+def tidal_login():
+    pass
+
+def spotify_login():
+    pass
+
+def process_song():
+    pass
+
+def get_tidal_playlists(session):
+    tidal_playlists = session.user.playlists()
+    tidal_playlists = [playlist for playlist in tidal_playlists if 'Auto Generated Playlist' in playlist.description]
+    tidal_playlists_to_be_created = [tempo for tempo in range(70,185,5) if str(tempo) not in [playlist.name for playlist in tidal_playlists]]
+    tidal_playlists += [session.user.create_playlist(f"{tempo}", f"Auto Generated Playlist - {tempo}BPM") for tempo in tidal_playlists_to_be_created]
+    return tidal_playlists
+
 def main():
     parser = argparse.ArgumentParser(description='Move Spotify songs to Tidal Playlists')
     group = parser.add_mutually_exclusive_group()
@@ -39,10 +55,7 @@ def main():
     expiry_time = os.getenv('TIDAL_EXPIRY_TIME')
     tidal_session.load_oauth_session(token_type, access_token, refresh_token, expiry_time)
 
-    tidal_playlists = tidal_session.user.playlists()
-    tidal_playlists = [playlist for playlist in tidal_playlists if 'Auto Generated Playlist' in playlist.description]
-    tidal_playlists_to_be_created = [tempo for tempo in range(70,185,5) if str(tempo) not in [playlist.name for playlist in tidal_playlists]]
-    tidal_playlists += [tidal_session.user.create_playlist(f"{tempo}", f"Auto Generated Playlist - {tempo}BPM") for tempo in tidal_playlists_to_be_created]
+    tidal_playlists = get_tidal_playlists(tidal_session)
 
     while spotify_playlist:
         for item in spotify_playlist['items']:
