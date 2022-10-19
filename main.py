@@ -8,43 +8,6 @@ from spotipy.oauth2 import SpotifyOAuth
 from spotipy.oauth2 import SpotifyClientCredentials
 
 def tidal_login():
-    pass
-
-def spotify_login():
-    pass
-
-def process_song():
-    pass
-
-def get_tidal_playlists(session):
-    tidal_playlists = session.user.playlists()
-    tidal_playlists = [playlist for playlist in tidal_playlists if 'Auto Generated Playlist' in playlist.description]
-    tidal_playlists_to_be_created = [tempo for tempo in range(70,185,5) if str(tempo) not in [playlist.name for playlist in tidal_playlists]]
-    tidal_playlists += [session.user.create_playlist(f"{tempo}", f"Auto Generated Playlist - {tempo}BPM") for tempo in tidal_playlists_to_be_created]
-    return tidal_playlists
-
-def main():
-    parser = argparse.ArgumentParser(description='Move Spotify songs to Tidal Playlists')
-    group = parser.add_mutually_exclusive_group()
-    group.add_argument('-u', '--url', help='Playlist URL to be moved')
-    group.add_argument('-ls', '--liked-songs', action='store_true' ,help='Liked songs to be moved')
-    args = parser.parse_args()
-    if args.url:
-        spotify_session = spotipy.Spotify(auth_manager=SpotifyClientCredentials())
-        try:
-            spotify_playlist = spotify_session.playlist(args.url)
-        except Exception as e:
-            logging.error("Could not parse URL")
-            logging.error(e)
-            sys.exit(0)
-    elif args.liked_songs:
-        spotify_login_scope = "user-library-read"
-        spotify_session = spotipy.Spotify(auth_manager=SpotifyOAuth(scope=spotify_login_scope))
-        spotify_playlist = spotify_session.current_user_saved_tracks()
-    else:
-        parser.print_help()
-        sys.exit(0)
-
     tidal_session = tidalapi.Session()
     # # Will run until you visit the printed url and link your account
     # session.login_oauth_simple()
@@ -54,9 +17,17 @@ def main():
     refresh_token = os.getenv('TIDAL_REFRESH_TOKEN')
     expiry_time = os.getenv('TIDAL_EXPIRY_TIME')
     tidal_session.load_oauth_session(token_type, access_token, refresh_token, expiry_time)
+    return tidal_session
 
+def get_tidal_playlists(session):
+    tidal_playlists = session.user.playlists()
+    tidal_playlists = [playlist for playlist in tidal_playlists if 'Auto Generated Playlist' in playlist.description]
+    tidal_playlists_to_be_created = [tempo for tempo in range(70,185,5) if str(tempo) not in [playlist.name for playlist in tidal_playlists]]
+    tidal_playlists += [session.user.create_playlist(f"{tempo}", f"Auto Generated Playlist - {tempo}BPM") for tempo in tidal_playlists_to_be_created]
+    return tidal_playlists
+
+def process_song(spotify_session, tidal_session, spotify_playlist):
     tidal_playlists = get_tidal_playlists(tidal_session)
-
     while spotify_playlist:
         for item in spotify_playlist['items']:
 
@@ -94,6 +65,48 @@ def main():
             spotify_playlist = None
 
 
+def main():
+    tidal_session = tidalapi.Session()
+    # # Will run until you visit the printed url and link your account
+    # session.login_oauth_simple()
+    # logging.info(session.check_login())
+    token_type = 'Bearer'
+    access_token = os.getenv('TIDAL_ACCESS_TOKEN')
+    refresh_token = os.getenv('TIDAL_REFRESH_TOKEN')
+    expiry_time = os.getenv('TIDAL_EXPIRY_TIME')
+    tidal_session.load_oauth_session(token_type, access_token, refresh_token, expiry_time)
+
+    parser = argparse.ArgumentParser(description='Move Spotify songs to Tidal Playlists')
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument('-u', '--url', help='Playlist URL to be moved')
+    group.add_argument('-ls', '--liked-songs', action='store_true' ,help='Liked songs to be moved')
+    args = parser.parse_args()
+    if args.url:
+        spotify_session = spotipy.Spotify(auth_manager=SpotifyClientCredentials())
+        try:
+            spotify_playlist = spotify_session.playlist(args.url)
+        except Exception as e:
+            logging.error("Could not parse URL")
+            logging.error(e)
+            sys.exit(0)
+        process_song(
+            spotify_session=spotify_session, 
+            tidal_session=tidal_session, 
+            spotify_playlist=spotify_playlist['tracks']
+        )
+    elif args.liked_songs:
+        spotify_login_scope = "user-library-read"
+        spotify_session = spotipy.Spotify(auth_manager=SpotifyOAuth(scope=spotify_login_scope))
+        spotify_playlist = spotify_session.current_user_saved_tracks()
+        process_song(
+            spotify_session=spotify_session, 
+            tidal_session=tidal_session, 
+            spotify_playlist=spotify_playlist
+        )
+    else:
+        parser.print_help()
+        sys.exit(0)
+
 if __name__ == "__main__":
     logging.basicConfig(
         level = os.environ.get('LOGLEVEL', 'INFO').upper(),
@@ -102,6 +115,5 @@ if __name__ == "__main__":
             logging.StreamHandler()
         ]
     )
-    # logging.info("Start Main")
     main()
-    # logging.info("Fin")
+    logging.info("Fin")
