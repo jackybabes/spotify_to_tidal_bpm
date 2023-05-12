@@ -26,39 +26,74 @@ def get_tidal_playlists(session):
     tidal_playlists += [session.user.create_playlist(f"{tempo}", f"Auto Generated Playlist - {tempo}BPM") for tempo in tidal_playlists_to_be_created]
     return tidal_playlists
 
-def process_song(spotify_session, tidal_session, spotify_playlist):
+def add_song_to_tidal(spotify_session, tidal_session, item, tidal_playlist):
+    spotify_track = item['track']    
+    logging.info(f"{spotify_track['artists'][0]['name']} – {spotify_track['name']}")
+
+    spotify_audio_features = spotify_session.audio_features([spotify_track['uri']])[0]
+    
+    if isinstance(spotify_audio_features, type(None)):
+        logging.warning("BPM Not Found")
+        return None
+
+    bpm_rounded = 5 * round(spotify_audio_features['tempo'] / 5)
+    if bpm_rounded < 70 or bpm_rounded > 180:
+        logging.warning("BPM too Low/High")
+        return None
+
+    tidal_search_result = tidal_session.search(
+        query=f"{spotify_track['artists'][0]['name']} {spotify_track['name']}", 
+        models=[tidalapi.media.Track]
+    )
+    if isinstance(tidal_search_result['top_hit'], type(None)):
+        logging.warning("Track Not Found in Tidal")
+        return None
+    logging.info(f"{tidal_search_result['top_hit'].artist.name} - {tidal_search_result['top_hit'].name}")
+
+    logging.info(f"Adding to playlist: {bpm_rounded}")
+    tidal_target_playlist = [playlist for playlist in tidal_playlists if int(playlist.name) == bpm_rounded][0]
+    tidal_target_playlist.add([tidal_search_result['top_hit'].id])
+
+def thread_worker(q, spotify_session, tidal_session, tidal_playlists):
+    while True:
+        item = q.get()
+        add_song_to_tidal(spotify_session, tidal_session, item, tidal_playlists)
+        q.done()
+
+
+
+def process_spotify_playlist(spotify_session, tidal_session, spotify_playlist):
     tidal_playlists = get_tidal_playlists(tidal_session)
     while spotify_playlist:
         for item in spotify_playlist['items']:
-
             spotify_track = item['track']    
-            logging.info(f"{spotify_track['artists'][0]['name']} – {spotify_track['name']}")
+            # logging.info(f"{spotify_track['artists'][0]['name']} – {spotify_track['name']}")
 
-            spotify_audio_features = spotify_session.audio_features([spotify_track['uri']])[0]
+            # spotify_audio_features = spotify_session.audio_features([spotify_track['uri']])[0]
             
-            if isinstance(spotify_audio_features, type(None)):
-                logging.warning("BPM Not Found")
-                continue
+            # if isinstance(spotify_audio_features, type(None)):
+            #     logging.warning("BPM Not Found")
+            #     continue
 
-            bpm_rounded = 5 * round(spotify_audio_features['tempo'] / 5)
-            if bpm_rounded < 70 or bpm_rounded > 180:
-                logging.warning("BPM too Low/High")
-                continue
+            # bpm_rounded = 5 * round(spotify_audio_features['tempo'] / 5)
+            # if bpm_rounded < 70 or bpm_rounded > 180:
+            #     logging.warning("BPM too Low/High")
+            #     continue
 
-            tidal_search_result = tidal_session.search(
-                query=f"{spotify_track['artists'][0]['name']} {spotify_track['name']}", 
-                models=[tidalapi.media.Track]
-            )
-            if isinstance(tidal_search_result['top_hit'], type(None)):
-                logging.warning("Track Not Found in Tidal")
-                continue
-            logging.info(f"{tidal_search_result['top_hit'].artist.name} - {tidal_search_result['top_hit'].name}")
+            # tidal_search_result = tidal_session.search(
+            #     query=f"{spotify_track['artists'][0]['name']} {spotify_track['name']}", 
+            #     models=[tidalapi.media.Track]
+            # )
+            # if isinstance(tidal_search_result['top_hit'], type(None)):
+            #     logging.warning("Track Not Found in Tidal")
+            #     continue
+            # logging.info(f"{tidal_search_result['top_hit'].artist.name} - {tidal_search_result['top_hit'].name}")
 
 
-            logging.info(f"Adding to playlist: {bpm_rounded}")
-            tidal_target_playlist = [playlist for playlist in tidal_playlists if int(playlist.name) == bpm_rounded][0]
-            tidal_target_playlist.add([tidal_search_result['top_hit'].id])
-        
+            # logging.info(f"Adding to playlist: {bpm_rounded}")
+            # tidal_target_playlist = [playlist for playlist in tidal_playlists if int(playlist.name) == bpm_rounded][0]
+            # tidal_target_playlist.add([tidal_search_result['top_hit'].id])
+
         if spotify_playlist['next']:
             spotify_playlist = spotify_session.next(spotify_playlist)
         else:
@@ -89,7 +124,7 @@ def main():
             logging.error("Could not parse URL")
             logging.error(e)
             sys.exit(0)
-        process_song(
+        process_spotify_playlist(
             spotify_session=spotify_session, 
             tidal_session=tidal_session, 
             spotify_playlist=spotify_playlist['tracks']
@@ -98,7 +133,7 @@ def main():
         spotify_login_scope = "user-library-read"
         spotify_session = spotipy.Spotify(auth_manager=SpotifyOAuth(scope=spotify_login_scope))
         spotify_playlist = spotify_session.current_user_saved_tracks()
-        process_song(
+        process_spotify_playlist(
             spotify_session=spotify_session, 
             tidal_session=tidal_session, 
             spotify_playlist=spotify_playlist
