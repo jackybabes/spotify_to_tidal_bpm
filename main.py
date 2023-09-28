@@ -1,111 +1,67 @@
 import os
 import sys
 import spotipy
-import tidalapi
 import logging
-import argparse
-from spotipy.oauth2 import SpotifyOAuth
 from spotipy.oauth2 import SpotifyClientCredentials
+from spotdl import Spotdl
+from mutagen.easyid3 import EasyID3
+import shutil
 
-def tidal_login():
-    tidal_session = tidalapi.Session()
-    # # Will run until you visit the printed url and link your account
-    # session.login_oauth_simple()
-    # logging.info(session.check_login())
-    token_type = 'Bearer'
-    access_token = os.getenv('TIDAL_ACCESS_TOKEN')
-    refresh_token = os.getenv('TIDAL_REFRESH_TOKEN')
-    expiry_time = os.getenv('TIDAL_EXPIRY_TIME')
-    tidal_session.load_oauth_session(token_type, access_token, refresh_token, expiry_time)
-    return tidal_session
-
-def get_tidal_playlists(session):
-    tidal_playlists = session.user.playlists()
-    tidal_playlists = [playlist for playlist in tidal_playlists if 'Auto Generated Playlist' in playlist.description]
-    tidal_playlists_to_be_created = [tempo for tempo in range(70,185,5) if str(tempo) not in [playlist.name for playlist in tidal_playlists]]
-    tidal_playlists += [session.user.create_playlist(f"{tempo}", f"Auto Generated Playlist - {tempo}BPM") for tempo in tidal_playlists_to_be_created]
-    return tidal_playlists
-
-def process_song(spotify_session, tidal_session, spotify_playlist):
-    tidal_playlists = get_tidal_playlists(tidal_session)
-    while spotify_playlist:
-        for item in spotify_playlist['items']:
-
-            spotify_track = item['track']    
-            logging.info(f"{spotify_track['artists'][0]['name']} – {spotify_track['name']}")
-
-            spotify_audio_features = spotify_session.audio_features([spotify_track['uri']])[0]
-            
-            if isinstance(spotify_audio_features, type(None)):
-                logging.warning("BPM Not Found")
-                continue
-
-            bpm_rounded = 5 * round(spotify_audio_features['tempo'] / 5)
-            if bpm_rounded < 70 or bpm_rounded > 180:
-                logging.warning("BPM too Low/High")
-                continue
-
-            tidal_search_result = tidal_session.search(
-                query=f"{spotify_track['artists'][0]['name']} {spotify_track['name']}", 
-                models=[tidalapi.media.Track]
-            )
-            if isinstance(tidal_search_result['top_hit'], type(None)):
-                logging.warning("Track Not Found in Tidal")
-                continue
-            logging.info(f"{tidal_search_result['top_hit'].artist.name} - {tidal_search_result['top_hit'].name}")
+cwd = os.getcwd()
+os.chdir(cwd + '/songs_output')
+print(os.getcwd())
 
 
-            logging.info(f"Adding to playlist: {bpm_rounded}")
-            tidal_target_playlist = [playlist for playlist in tidal_playlists if int(playlist.name) == bpm_rounded][0]
-            tidal_target_playlist.add([tidal_search_result['top_hit'].id])
+
+def download_song(spotdl, spotify_track, spotify_audio_features):
+    url = spotify_track['external_urls']['spotify']
         
-        if spotify_playlist['next']:
-            spotify_playlist = spotify_session.next(spotify_playlist)
-        else:
-            spotify_playlist = None
+    songs = spotdl.search([url])
+
+    for song in songs:
+        song_info, path = spotdl.download(song)
+        
+        if 'tempo' in spotify_audio_features:
+            metadata = EasyID3(path)
+            metadata['bpm'] = str(int(spotify_audio_features['tempo']))
+            metadata.save()
+        
+        # shutil.move(path, './songs_output/' + str(path))
+        
+
 
 
 def main():
-    tidal_session = tidalapi.Session()
-    # # Will run until you visit the printed url and link your account
-    # session.login_oauth_simple()
-    # logging.info(session.check_login())
-    token_type = 'Bearer'
-    access_token = os.getenv('TIDAL_ACCESS_TOKEN')
-    refresh_token = os.getenv('TIDAL_REFRESH_TOKEN')
-    expiry_time = os.getenv('TIDAL_EXPIRY_TIME')
-    tidal_session.load_oauth_session(token_type, access_token, refresh_token, expiry_time)
 
-    parser = argparse.ArgumentParser(description='Move Spotify songs to Tidal Playlists')
-    group = parser.add_mutually_exclusive_group()
-    group.add_argument('-u', '--url', help='Playlist URL to be moved')
-    group.add_argument('-ls', '--liked-songs', action='store_true' ,help='Liked songs to be moved')
-    args = parser.parse_args()
-    if args.url:
-        spotify_session = spotipy.Spotify(auth_manager=SpotifyClientCredentials())
-        try:
-            spotify_playlist = spotify_session.playlist(args.url)
-        except Exception as e:
-            logging.error("Could not parse URL")
-            logging.error(e)
-            sys.exit(0)
-        process_song(
-            spotify_session=spotify_session, 
-            tidal_session=tidal_session, 
-            spotify_playlist=spotify_playlist['tracks']
-        )
-    elif args.liked_songs:
-        spotify_login_scope = "user-library-read"
-        spotify_session = spotipy.Spotify(auth_manager=SpotifyOAuth(scope=spotify_login_scope))
-        spotify_playlist = spotify_session.current_user_saved_tracks()
-        process_song(
-            spotify_session=spotify_session, 
-            tidal_session=tidal_session, 
-            spotify_playlist=spotify_playlist
-        )
-    else:
-        parser.print_help()
+    playlist_url = 'https://open.spotify.com/playlist/514FdL7PaCgkuaWg4tbBX9?si=1469bbcc1c964fa8'
+
+    spotify_session = spotipy.Spotify(auth_manager=SpotifyClientCredentials())
+    spotdl = Spotdl(client_id=os.getenv('SPOTIPY_CLIENT_ID'), client_secret=os.getenv('SPOTIPY_CLIENT_SECRET'))
+
+    try:
+        spotify_playlist = spotify_session.playlist(playlist_url)
+    except Exception as e:
+        logging.error("Could not parse URL")
+        logging.error(e)
         sys.exit(0)
+
+
+    while spotify_playlist:
+        for item in spotify_playlist['tracks']['items']:
+            spotify_track = item['track']    
+            logging.info(f"{spotify_track['artists'][0]['name']} – {spotify_track['name']}")
+            spotify_audio_features = spotify_session.audio_features([spotify_track['uri']])[0]
+
+            # TODO?
+            # album_details = spotify_session.album(spotify_track['album']['uri'])
+            # genres = album_details['genres']
+
+            download_song(spotdl, spotify_track, spotify_audio_features)
+
+        if 'next' in spotify_playlist:
+            spotify_playlist = spotify_session.next(spotify_playlist)
+        else:
+            spotify_playlist = None
 
 if __name__ == "__main__":
     logging.basicConfig(
