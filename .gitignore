@@ -155,3 +155,5 @@ cython_debug/
 .*
 
 songs_output
+
+env.ps1
